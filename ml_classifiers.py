@@ -1,9 +1,3 @@
-###################################  libraries to install ###################################
-# pip install pandas numpy seaborn matplotlib scipy scikit-learn xgboost graphviz
-# conda install lightgbm -y
-# brew install cmake libomp
-# brew install graphviz
-
 import os
 import graphviz
 import seaborn as sns
