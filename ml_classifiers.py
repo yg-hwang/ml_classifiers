@@ -44,7 +44,7 @@ from lightgbm import LGBMClassifier
 class Classifiers(object):
     def __init__(self, feature_scaler: str = None, random_state: int = 123):
         """
-        분류 모델별 예측 시 사용할 Feature scaler를 지정한다.
+        알고리즘별 예측 시 사용할 Feature scaler를 지정한다.
 
         :param feature_scaler: str, default=None
             Transform features by scaling each feature to a given range.
@@ -105,7 +105,7 @@ class Classifiers(object):
 
     def separate_by_feature_and_label(self, data: pd.DataFrame, target: str) -> tuple:
         """
-        모델링에 사용할 데이터를 Feature(X)와 Target(y)으로 분리한다.
+        하나의 데이터셋을 Feature(X)와 Target(y)으로 분리한다.
 
         :param data: pd.DataFrame
             Dataset to fit and train model.
@@ -202,7 +202,7 @@ class Classifiers(object):
 
     def get_classifier_models(self) -> dict:
         """
-        분류 모델에 사용할 알고리즘을 사전에 정의한다.
+        예측에 사용할 알고리즘 사전 정의
         """
 
         return {
@@ -234,7 +234,7 @@ class Classifiers(object):
         estimator_fit_params: dict = None,
     ) -> pd.DataFrame:
         """
-        모델별 예측을 수행하여 그 결과를 반환한다.
+        알고리즘별 교차 검증 결과를 반환한다.
 
         :param data: pd.DataFrame
             Dataset to fit and train model.
@@ -377,7 +377,7 @@ class Classifiers(object):
 
     def show_cross_validation_result(self):
         """
-        run_cross_validation()의 결과를 시각화한다.
+        교차 검증 결과를 시각화한다.
         """
 
         df_cv_result_agg = (
@@ -462,10 +462,9 @@ class Classifiers(object):
 
     def generate_params_grid(self, hyperparams_space: dict) -> dict:
         """
-        하이퍼파라미터 튜닝을 시도할 모델과 해당 파라미터 Grid를 반환한다.
+        하이퍼파라미터 튜닝을 시도할 알고리즘과 해당 파라미터 Grid를 반환한다.
 
         :param hyperparams_space: dictionary
-            사용자가 직접 정의한 모델과 파라미터 값의 dictionary
         """
 
         if "XGBClassifier" in hyperparams_space.keys():
@@ -495,9 +494,10 @@ class Classifiers(object):
         scoring: str = None,
         n_iter: int = 50,
         factor: int = 3,
+        filepath: str = "model_saved",
     ) -> pd.DataFrame:
         """
-        모델별 하이퍼파라미터 탐색 후 그 결과를 반환한다.
+        하이퍼파라미터 탐색 결과를 반환한다.
 
         :param data: pd.DataFrame
             Dataset to fit and train model.
@@ -550,6 +550,9 @@ class Classifiers(object):
             The 'halving' parameter, which determines the proportion of candidates
             that are selected for each subsequent iteration. For example,
             ``factor=3`` means that only one third of the candidates are selected.
+
+        :param filepath: str, default="model_saved"
+            The filepath to save the best estimator.
         """
 
         self.feature_names = data.loc[:, data.columns != target].columns
@@ -679,8 +682,8 @@ class Classifiers(object):
                 "------------------------------------------------------------------------------"
             )
             self.best_estimators.update({estimator_name: model.best_estimator_})
-            os.makedirs("model_saved", exist_ok=True)
-            dump(model.best_estimator_, f"model_saved/{estimator_name}.joblib")
+            os.makedirs(filepath, exist_ok=True)
+            dump(model.best_estimator_, f"{filepath}/{estimator_name}.joblib")
 
             cv_result_tmp = pd.DataFrame(data=model.cv_results_)
             cv_result_tmp["estimator_name"] = estimator_name
@@ -691,7 +694,7 @@ class Classifiers(object):
 
     def show_hyperparameter_search_result(self):
         """
-        search_hyperparameter()의 결과를 시각화한다.
+        하이퍼파라미터 탐색 결과를 시각화한다.
         """
 
         df = (
@@ -780,6 +783,8 @@ class Classifiers(object):
 
         :param pred: 1d array-like, or label indicator array / sparse matrix
             Predicted labels, as returned by a classifier.
+
+        :param pred_proba: array-like of shape (n_samples,) or (n_samples, n_classes) Target scores.
         """
 
         from sklearn.metrics import (
@@ -854,8 +859,8 @@ class Classifiers(object):
 
     def get_best_model_info(self):
         """
-        하이퍼파라미터 탐색 결과로부터 Best Model의 파라미터를 반환한다.
-            - Best 모델로 선정 기준
+        하이퍼파라미터 탐색 결과로부터 최적의 모델의 파라미터를 반환한다.
+            - Best 모델 선정 기준
             - 1) mean_test_score 높은순
             - 2) std_test_score 낮은순
             - 3) mean_fit_time 낮은순
@@ -881,10 +886,8 @@ class Classifiers(object):
         """
 
         if estimator_name is None:
-            print(" >>> Predict from new data. ")
             return self.best_estimators[self.get_best_model_info()["estimator_name"]]
         else:
-            print(" >>> Predict from new data. ")
             return self.best_estimators[estimator_name]
 
     def show_feature_importances(
@@ -896,7 +899,6 @@ class Classifiers(object):
         """
 
         feature_importances = {}
-        n_features = n_features
         sns.set(rc={"figure.figsize": (12, 6)})
 
         if estimators is None:
@@ -956,7 +958,7 @@ class Classifiers(object):
         index: list = None,
     ):
         """
-        훈련된 모델로 각 Feature 여부에 따른 Importance를 시각화한다.
+        훈련된 모델로 각 Feature 여부에 따른 중요도를 시각화한다.
             1. 기존 test data에서 하나의 feature에 대해 row 순서를 무작위로 섞어서 새로운 test data를 생성
             2. 새로운 test data로 score를 측정
             3. 기존 test data에 의한 score 대비 새로운 test data에 의한 score 비교
@@ -1019,22 +1021,39 @@ class Classifiers(object):
                 plt.title(f"permutation importances ({estimator_name})", fontsize=13)
                 plt.show()
 
-    def show_decision_tree(self, feature_names: list = None, class_names=None):
+    def show_decision_tree(
+        self,
+        feature_names: list = None,
+        class_names: Union[list, bool] = None,
+        filepath: str = "decision_tree_viz",
+    ):
         """
         DecisionTreeClassifier를 사용한 결과를 시각화한다.
+
+        :param feature_names: list of str, default=None
+            Names of each of the features.
+            If None generic names will be used ("feature_0", "feature_1", ...).
+
+        :param class_names: list of str or bool, default=None
+            Names of each of the target classes in ascending numerical order.
+            Only relevant for classification and not supported for multi-output.
+            If ``True``, shows a symbolic representation of the class name.
+
+        :param filepath: str, default="decision_tree_viz"
+            The filepath to save the plot visualized by `DecisionTreeClassifier`.
         """
 
         if "DecisionTreeClassifier" in self.best_estimators.keys():
-            os.makedirs("viz", exist_ok=True)
+            os.makedirs(filepath, exist_ok=True)
             export_graphviz(
                 decision_tree=self.best_estimators["DecisionTreeClassifier"],
-                out_file="viz/tree.dot",
+                out_file=f"{filepath}/decision_tree.dot",
                 class_names=class_names,
                 feature_names=feature_names,
                 impurity=True,
                 filled=True,
             )
-            with open("viz/tree.dot") as f:
+            with open(f"{filepath}/decision_tree.dot") as f:
                 dot_graph = f.read()
             return graphviz.Source(dot_graph)
         else:
@@ -1042,10 +1061,9 @@ class Classifiers(object):
 
     def create_params_candidates(self, hyperparams_space: dict) -> dict:
         """
-        모델 별 파라미터 조합 수 확인
+        알고리즘별 파라미터 조합 수 확인
 
         :param hyperparams_space: dictionary
-            사용자가 직접 정의한 모델과 파라미터 값의 dictionary
         """
 
         candidates = {}
