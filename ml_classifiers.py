@@ -44,7 +44,8 @@ from lightgbm import LGBMClassifier
 class Classifiers(object):
     def __init__(self, feature_scaler: str = None, random_state: int = 123):
         """
-        알고리즘별 예측 시 사용할 Feature scaler를 지정한다.
+        데이터셋에 적용할 Feature scaler를 지정한다.
+        (지정하지 않을 경우 원본 데이터를 그대로 예측에 사용)
 
         :param feature_scaler: str, default=None
             Transform features by scaling each feature to a given range.
@@ -105,7 +106,7 @@ class Classifiers(object):
 
     def separate_by_feature_and_label(self, data: pd.DataFrame, target: str) -> tuple:
         """
-        하나의 데이터셋을 Feature(X)와 Target(y)으로 분리한다.
+        데이터셋을 Feature(X)와 Target(y)으로 분리한다.
 
         :param data: pd.DataFrame
             Dataset to fit and train model.
@@ -234,7 +235,7 @@ class Classifiers(object):
         estimator_fit_params: dict = None,
     ) -> pd.DataFrame:
         """
-        알고리즘별 교차 검증 결과를 반환한다.
+        교차 검증 결과를 반환한다.
 
         :param data: pd.DataFrame
             Dataset to fit and train model.
@@ -562,9 +563,7 @@ class Classifiers(object):
         self.n_splits = n_splits
         self.scoring = scoring
 
-        print(
-            " -------------- Start to search best parameters by cross validation. -------------- "
-        )
+        print(" -------------- Start to search best parameters. -------------- ")
         X_train, X_test, y_train, y_test = self.split_data_into_train_test(
             data=data, target=target, test_size=test_size, shuffle=shuffle
         )
