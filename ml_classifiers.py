@@ -232,7 +232,7 @@ class Classifiers(object):
         n_splits: int = None,
         n_repeats: int = None,
         scoring: str = None,
-        estimator_fit_params: dict = None,
+        estimator_params: dict = None,
     ) -> pd.DataFrame:
         """
         교차 검증 결과를 반환한다.
@@ -271,7 +271,7 @@ class Classifiers(object):
                 - "roc_auc"
                 - make_scorer(precision, average="micro")
 
-        :param estimator_fit_params: dict
+        :param estimator_params: dict
             Parameters to pass to the fit method of the estimator.
         """
 
@@ -286,13 +286,13 @@ class Classifiers(object):
                 classifiers.update({label: self.get_classifier_models()[label]})
         classifiers = dict(sorted(classifiers.items()))
 
-        if estimator_fit_params is not None:
+        if estimator_params is not None:
             if (
-                len(list(set(estimator_fit_params.keys()) & set(classifiers.keys())))
+                len(list(set(estimator_params.keys()) & set(classifiers.keys())))
                 == 0
             ):
                 raise ValueError(
-                    " If you use `estimator_fit_params`, "
+                    " If you use `estimator_params`, "
                     "you must also include estimator in the list of `estimators`. "
                 )
 
@@ -306,9 +306,9 @@ class Classifiers(object):
             print(f" >>> {estimator_name} running... ")
             fit_start_time = datetime.now()
 
-            if estimator_fit_params is not None:
-                if estimator_name in estimator_fit_params.keys():
-                    estimator_params = estimator_fit_params[estimator_name]
+            if estimator_params is not None:
+                if estimator_name in estimator_params.keys():
+                    estimator_params = estimator_params[estimator_name]
                     if "fit_params" in estimator_params.keys():
                         fit_params = estimator_params["fit_params"]
                         estimator_params.pop("fit_params")
