@@ -231,7 +231,7 @@ class Classifiers(object):
         kfold: str = None,
         n_splits: int = None,
         n_repeats: int = None,
-        scoring: str = None,
+        scoring: Union[str, list] = None,
         estimator_params: dict = None,
     ) -> pd.DataFrame:
         """
@@ -270,6 +270,7 @@ class Classifiers(object):
                 - "f1"
                 - "roc_auc"
                 - make_scorer(precision, average="micro")
+                - ...
 
         :param estimator_params: dict
             Parameters to pass to the fit method of the estimator.
@@ -287,10 +288,7 @@ class Classifiers(object):
         classifiers = dict(sorted(classifiers.items()))
 
         if estimator_params is not None:
-            if (
-                len(list(set(estimator_params.keys()) & set(classifiers.keys())))
-                == 0
-            ):
+            if len(list(set(estimator_params.keys()) & set(classifiers.keys()))) == 0:
                 raise ValueError(
                     " If you use `estimator_params`, "
                     "you must also include estimator in the list of `estimators`. "
@@ -323,8 +321,8 @@ class Classifiers(object):
 
             print(f"estimator_params: {estimator_params}")
             print(f"fit_params: {fit_params}")
-            if self.label_count > 2:
-                cv_dict = cross_validate(
+            if self.label_count >= 2:
+                cv_result_dict = cross_validate(
                     estimator=estimator()
                     if estimator_params is None
                     else estimator(**estimator_params),
@@ -337,34 +335,26 @@ class Classifiers(object):
                     scoring=scoring,
                     n_jobs=-1,
                 )
-                df_cv = pd.DataFrame(data=cv_dict)
-                df_cv["scoring"] = scoring
+                df_cv = pd.DataFrame(data=cv_result_dict)
+
+                if isinstance(scoring, list):
+                    value_vars = [f"test_{s}" for s in scoring]
+                    print(value_vars)
+                    df_cv = df_cv.melt(
+                        id_vars=["fit_time", "score_time"], value_vars=value_vars
+                    )
+                    df_cv = df_cv.rename(
+                        columns={"variable": "scoring", "value": "test_score"}
+                    )
+                    df_cv["scoring"] = df_cv["scoring"].apply(
+                        lambda x: x.replace("test_", "")
+                    )
+                else:
+                    df_cv["scoring"] = scoring
                 df_cv["estimator_name"] = estimator_name
                 self.df_cv_result = pd.concat(
                     [self.df_cv_result, df_cv], ignore_index=True
                 )
-
-            elif self.label_count == 2:
-                for scoring in ["accuracy", "precision", "recall", "f1", "roc_auc"]:
-                    cv_dict = cross_validate(
-                        estimator=estimator()
-                        if estimator_params is None
-                        else estimator(**estimator_params),
-                        fit_params=fit_params,
-                        X=features,
-                        y=label,
-                        cv=self.get_kfold_function(
-                            kfold=kfold, n_splits=n_splits, n_repeats=n_repeats
-                        ),
-                        scoring=scoring,
-                        n_jobs=-1,
-                    )
-                    df_cv = pd.DataFrame(data=cv_dict)
-                    df_cv["scoring"] = scoring
-                    df_cv["estimator_name"] = estimator_name
-                    self.df_cv_result = pd.concat(
-                        [self.df_cv_result, df_cv], ignore_index=True
-                    )
 
             else:
                 raise ValueError(" Single class can not create confusion matrix. ")
@@ -493,7 +483,7 @@ class Classifiers(object):
         n_splits: int = None,
         n_repeats: int = None,
         scoring: str = None,
-        n_iter: int = 50,
+        n_iter: int = 10,
         factor: int = 3,
         filepath: str = "model_saved",
     ) -> pd.DataFrame:
@@ -544,7 +534,7 @@ class Classifiers(object):
                 - "roc_auc"
                 - make_scorer(precision, average="micro")
 
-        :param n_iter, default=5
+        :param n_iter, default=10
             Number of parameter settings that are produced.
 
         :param factor: int or float, default=3
@@ -954,7 +944,6 @@ class Classifiers(object):
         target: str,
         estimators: list = None,
         scoring: str = None,
-        index: list = None,
     ):
         """
         훈련된 모델로 각 Feature 여부에 따른 중요도를 시각화한다.
@@ -966,6 +955,25 @@ class Classifiers(object):
             4. score가 감소하지 않는 feature를 발견 시, 해당 feature를 제와하여 다시 튜닝 수행
                 - 성능 개선 효과 기대 가능
                 - feature 제거에 따른 추가 리소스 확보 가능
+
+        :param data: pd.DataFrame
+            Data on which permutation importance will be computed.
+
+        :param target: str
+            Target for supervised or `None` for unsupervised.
+
+        :param estimators : list, default=None
+            Estimators that has already been performed to fit
+
+        :param scoring: str, list, tuple, default=None
+            Scorer to use.
+            If `scoring` represents a single score, one can use:
+            - a single string (see :ref:`scoring_parameter`);
+
+            If `scoring` represents multiple scores, one can use:
+            - a list or tuple of unique strings;
+
+            If None, the estimator's default scorer is used.
         """
         X_train, X_test, y_train, y_test = self.split_data_into_train_test(
             data=data, target=target
@@ -995,7 +1003,25 @@ class Classifiers(object):
 
         sns.set(rc={"figure.figsize": (12, 12)})
         for estimator_name in permutation_importances.keys():
-            if index is None:
+            if isinstance(scoring, list):
+                for score in scoring:
+                    sns.boxplot(
+                        data=pd.DataFrame(
+                            data=permutation_importances[estimator_name][score][
+                                "importances"
+                            ].T,
+                            columns=self.feature_names,
+                        ),
+                        orient="h",
+                        showmeans=True,
+                        meanprops={"marker": "v", "markerfacecolor": "white"},
+                    )
+                    plt.title(
+                        f"Permutation Importances ({estimator_name}, {score.upper()})",
+                        fontsize=13,
+                    )
+                    plt.show()
+            else:
                 sns.boxplot(
                     data=pd.DataFrame(
                         data=permutation_importances[estimator_name]["importances"].T,
@@ -1005,19 +1031,16 @@ class Classifiers(object):
                     showmeans=True,
                     meanprops={"marker": "v", "markerfacecolor": "white"},
                 )
-                plt.title(f"permutation importances ({estimator_name})", fontsize=13)
-                plt.show()
-            else:
-                sns.boxplot(
-                    data=pd.DataFrame(
-                        data=permutation_importances[estimator_name]["importances"].T,
-                        columns=index,
-                    ),
-                    orient="h",
-                    showmeans=True,
-                    meanprops={"marker": "v", "markerfacecolor": "white"},
-                )
-                plt.title(f"permutation importances ({estimator_name})", fontsize=13)
+                if scoring is not None:
+                    plt.title(
+                        f"Permutation Importances ({estimator_name}, {scoring.upper()})",
+                        fontsize=13,
+                    )
+                else:
+                    plt.title(
+                        f"Permutation Importance ({estimator_name})",
+                        fontsize=13,
+                    )
                 plt.show()
 
     def show_decision_tree(
