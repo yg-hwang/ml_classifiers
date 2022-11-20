@@ -222,7 +222,7 @@ class Classifiers(object):
         n_repeats: int = None,
         scoring: Union[str, list] = None,
         estimator_params: dict = None,
-    ) -> pd.DataFrame:
+    ):
         """
         교차 검증 결과를 반환한다.
 
@@ -280,15 +280,14 @@ class Classifiers(object):
                     "you must also include estimator in the list of `estimators`. "
                 )
 
-        print(
-            " -------------- Start to create performance metric by estimator. -------------- "
-        )
         X, y = self._transform_feature_scale(X=X, y=y)
         self.df_cv_result = pd.DataFrame()
         self.label_count = np.unique(y).size
 
         for estimator_name, estimator in classifiers.items():
-            print(f" >>> {estimator_name} running... ")
+            print(
+                f" \n---------------------- {estimator_name} ---------------------- "
+            )
             fit_start_time = datetime.now()
 
             if estimator_params is not None:
@@ -306,8 +305,8 @@ class Classifiers(object):
                 estimator_params = None
                 fit_params = None
 
-            print(f"estimator_params: {estimator_params}")
-            print(f"fit_params: {fit_params}")
+            print(f" >>> estimator_params: {estimator_params}")
+            print(f" >>> fit_params: {fit_params}")
             if self.label_count >= 2:
                 cv_result_dict = cross_validate(
                     estimator=estimator()
@@ -326,7 +325,6 @@ class Classifiers(object):
 
                 if isinstance(scoring, list):
                     value_vars = [f"test_{s}" for s in scoring]
-                    print(value_vars)
                     df_cv = df_cv.melt(
                         id_vars=["fit_time", "score_time"], value_vars=value_vars
                     )
@@ -346,12 +344,8 @@ class Classifiers(object):
             else:
                 raise ValueError(" Single class can not create confusion matrix. ")
             print(
-                f" Finished. (elapsed_time: {(datetime.now() - fit_start_time).seconds}s) "
+                f" >>> Finished. (elapsed_time: {(datetime.now() - fit_start_time).seconds}s) "
             )
-            print(
-                " ------------------------------------------------------------------------------ "
-            )
-        return self.df_cv_result
 
     def show_cross_validation_result(self):
         """
@@ -377,7 +371,7 @@ class Classifiers(object):
             ignore_index=True,
         )
 
-        sns.set(rc={"figure.figsize": (8, 12)})
+        sns.set(rc={"figure.figsize": (8, 12), "figure.dpi": 120})
         for scoring in df["scoring"].unique():
             fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(18, 6))
             fig.tight_layout()
@@ -411,7 +405,7 @@ class Classifiers(object):
                 ax.tick_params(axis="y", labelsize=14)
                 ax.set_xlabel(xlabel=None)
                 ax.set_ylabel(ylabel=None)
-            ax1.set_title(scoring.upper(), fontsize=14)
+            ax1.set_title(str(scoring).upper(), fontsize=14)
             ax2.set_title("fit time (sec)", fontsize=14)
 
             df_tmp = df.loc[
@@ -474,6 +468,7 @@ class Classifiers(object):
         n_iter: int = 10,
         factor: int = 3,
         filepath: str = "model_saved",
+        verbose: int = -1,
     ):
         """
         하이퍼파라미터 탐색 결과를 반환한다.
@@ -541,7 +536,6 @@ class Classifiers(object):
         self.n_splits = n_splits
         self.scoring = scoring
 
-        print(" -------------- Start to search best parameters. -------------- ")
         X_train, X_test, y_train, y_test = self.split_data_into_train_test(
             X=X, y=y, test_size=test_size, shuffle=shuffle
         )
@@ -557,7 +551,9 @@ class Classifiers(object):
         classifiers = dict(sorted(classifiers.items()))
 
         for estimator_name, estimator in classifiers.items():
-            print(f" >>> {estimator_name} running... ")
+            print(
+                f" \n---------------------- {estimator_name} ---------------------- "
+            )
             fit_start_time = datetime.now()
 
             param_grid = params_grid[estimator_name]
@@ -567,9 +563,9 @@ class Classifiers(object):
             else:
                 fit_params = None
 
-            print("param_grid:")
+            print(" >>> Hyperparameter Space: ")
             pp.pprint(param_grid)
-            print(f"fit_params: {fit_params}")
+            print(f" >>> fit_params: {fit_params}")
 
             if search_method == "grid":
                 model = GridSearchCV(
@@ -581,6 +577,7 @@ class Classifiers(object):
                     scoring=scoring,
                     n_jobs=-1,
                     return_train_score=True,
+                    verbose=verbose,
                 )
 
             elif search_method == "random":
@@ -594,6 +591,7 @@ class Classifiers(object):
                     n_iter=n_iter,
                     n_jobs=-1,
                     return_train_score=True,
+                    verbose=verbose,
                 )
 
             elif search_method == "grid_halving":
@@ -608,6 +606,7 @@ class Classifiers(object):
                     return_train_score=True,
                     min_resources="exhaust",
                     factor=factor,
+                    verbose=verbose,
                 )
 
             elif search_method == "random_halving":
@@ -622,6 +621,7 @@ class Classifiers(object):
                     return_train_score=True,
                     n_candidates="exhaust",
                     factor=factor,
+                    verbose=verbose,
                 )
 
             else:
@@ -651,12 +651,10 @@ class Classifiers(object):
                         **fit_params,
                     )
 
-            print(f" Best Parameters: {model.best_params_} ")
+            print(" >>> Best Parameters:")
+            pp.pprint(model.best_params_)
             print(
-                f" Finished. (elapsed_time: {(datetime.now() - fit_start_time).seconds}s) "
-            )
-            print(
-                "------------------------------------------------------------------------------"
+                f" >>> Finished. (elapsed_time: {(datetime.now() - fit_start_time).seconds}s) "
             )
             self.best_estimators.update({estimator_name: model.best_estimator_})
             os.makedirs(filepath, exist_ok=True)
@@ -702,7 +700,7 @@ class Classifiers(object):
                 ignore_index=True,
             )
 
-        sns.set(rc={"figure.figsize": (8, 12)})
+        sns.set(rc={"figure.figsize": (8, 12), "figure.dpi": 120})
         fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(18, 6))
         fig.tight_layout()
         fig.subplots_adjust(wspace=0.4)
@@ -729,7 +727,7 @@ class Classifiers(object):
             ax.tick_params(axis="y", labelsize=14)
             ax.set_xlabel(xlabel=None)
             ax.set_ylabel(ylabel=None)
-        ax1.set_title(self.scoring.upper(), fontsize=14)
+        ax1.set_title(str(self.scoring).upper(), fontsize=14)
         ax2.set_title("mean fit time (sec)", fontsize=14)
 
         for index, row in df.iterrows():
@@ -871,8 +869,6 @@ class Classifiers(object):
         """
 
         feature_importances = {}
-        sns.set(rc={"figure.figsize": (8, 12)})
-
         if estimators is None:
             for estimator_name, estimator in self.best_estimators.items():
                 try:  # tree 기반에 한해서만 feature_importances가 나옴
@@ -896,6 +892,7 @@ class Classifiers(object):
                 except:
                     continue
 
+        sns.set(rc={"figure.figsize": (8, 12), "figure.dpi": 120})
         if index is None:
             df_tmp = pd.DataFrame(
                 data=feature_importances, index=self.feature_names[:n_features]
@@ -978,7 +975,7 @@ class Classifiers(object):
             )
             permutation_importances.update({estimator_name: scores})
 
-        sns.set(rc={"figure.figsize": (8, 12)})
+        sns.set(rc={"figure.figsize": (8, 12), "figure.dpi": 120})
         for estimator_name in permutation_importances.keys():
             if isinstance(scoring, list):
                 for score in scoring:
@@ -994,7 +991,7 @@ class Classifiers(object):
                         meanprops={"marker": "v", "markerfacecolor": "white"},
                     )
                     plt.title(
-                        f"Permutation Importances ({estimator_name}, {score.upper()})",
+                        f"Permutation Importances ({estimator_name}, {str(score).upper()})",
                         fontsize=13,
                     )
                     plt.show()
@@ -1010,7 +1007,7 @@ class Classifiers(object):
                 )
                 if scoring is not None:
                     plt.title(
-                        f"Permutation Importances ({estimator_name}, {scoring.upper()})",
+                        f"Permutation Importances ({estimator_name}, {str(scoring).upper()})",
                         fontsize=13,
                     )
                 else:
