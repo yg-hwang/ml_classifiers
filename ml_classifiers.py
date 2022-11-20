@@ -69,7 +69,7 @@ class Classifiers(object):
         self.n_repeats = None
         self.df_cv_result = None
 
-    def transform_feature_scale(self):
+    def _get_feature_scaler(self):
         if self.feature_scaler == "StandardScaler":
             from sklearn.preprocessing import StandardScaler
 
@@ -104,67 +104,56 @@ class Classifiers(object):
             )
             return None
 
-    def separate_by_feature_and_label(self, data: pd.DataFrame, target: str) -> tuple:
+    def _transform_feature_scale(self, X, y) -> tuple:
         """
-        데이터셋을 Feature(X)와 Target(y)으로 분리한다.
+        데이터셋 단위를 정규화하여 반환한다.
 
-        :param data: pd.DataFrame
-            Dataset to fit and train model.
-
-        :param target: str
-            A target column of dataset to try to predict.
+        :param X: Features to fit and train model.
+        :param y: A target label to predict.
         """
 
-        features = data.loc[:, data.columns != target].values
-        label = data[target].values
-        self.label_count = data[target].nunique()
+        self.label_count = np.unique(y).size
 
-        if self.transform_feature_scale() is None:
-            return features, label
+        if self._get_feature_scaler() is None:
+            return X, y
         else:
-            scaler = self.transform_feature_scale()
-            scaler.fit(features)
-            features_scaled = scaler.transform(features)
-            return features_scaled, label
+            scaler = self._get_feature_scaler()
+            scaler.fit(X)
+            X_scaled = scaler.transform(X)
+            return X_scaled, y
 
     def split_data_into_train_test(
-        self,
-        data: pd.DataFrame,
-        target: str,
-        test_size: float = None,
-        shuffle: bool = True,
+        self, X, y, test_size: float = None, shuffle: bool = True
     ) -> tuple:
         """
         모델링에 사용할 훈련, 검증 데이터를 분리한다.
 
-        :param data: pd.DataFrame
-            Dataset to fit and train model.
-
-        :param target: str
-            A target column of dataset to try to predict.
+        :param X: Features to fit and train model.
+        :param y: A target label to predict.
 
         :param test_size : float or int, default=None
-            If float, should be between 0.0 and 1.0 and represent the proportion
+            If floated, should be between 0.0 and 1.0 and represent the proportion
             of the dataset to include in the test split. If int, represents the
             absolute number of test samples. If None, the value is set to the
             complement of the train size.
 
         :param shuffle: bool, default=True
-            Whether or not to shuffle the data before splitting. If shuffle=False
+            Whether to shuffle the data before splitting. If shuffle=False
             then stratify must be None.
         """
 
-        features, label = self.separate_by_feature_and_label(data=data, target=target)
+        X, y = self._transform_feature_scale(X=X, y=y)
+        self.label_count = np.unique(y).size
         return train_test_split(
-            features,
-            label,
+            X,
+            y,
             test_size=test_size,
             shuffle=shuffle,
             random_state=self.random_state,
-            stratify=label,
+            stratify=y,
         )
 
-    def get_kfold_function(self, kfold: str, n_splits: int = 5, n_repeats: int = 10):
+    def _get_kfold_function(self, kfold: str, n_splits: int = 5, n_repeats: int = 10):
         """
         교차 검증에 적용할 방법을 선택한다.
 
@@ -201,7 +190,7 @@ class Classifiers(object):
                 "`KFold`, `StratifiedKFold`, `RepeatedKFold` or `RepeatedStratifiedKFold`."
             )
 
-    def get_classifier_models(self) -> dict:
+    def _get_classifier_models(self) -> dict:
         """
         예측에 사용할 알고리즘 사전 정의
         """
@@ -225,23 +214,20 @@ class Classifiers(object):
 
     def run_cross_validation(
         self,
-        data: pd.DataFrame,
-        target: str,
+        X,
+        y,
         estimators: Union[str, list] = "all",
         kfold: str = None,
         n_splits: int = None,
         n_repeats: int = None,
         scoring: Union[str, list] = None,
         estimator_params: dict = None,
-    ) -> pd.DataFrame:
+    ):
         """
         교차 검증 결과를 반환한다.
 
-        :param data: pd.DataFrame
-            Dataset to fit and train model.
-
-        :param target: str
-            A target column of dataset to try to predict.
+        :param X: Features to fit and train model.
+        :param y: A target label to predict.
 
         :param estimators: str or list
             The estimator list to use to fit the data.
@@ -277,14 +263,14 @@ class Classifiers(object):
         """
 
         if estimators == "all":
-            classifiers = self.get_classifier_models()
+            classifiers = self._get_classifier_models()
         else:
             estimators_intersection = list(
-                set(estimators) & set(self.get_classifier_models().keys())
+                set(estimators) & set(self._get_classifier_models().keys())
             )
             classifiers = {}
             for label in estimators_intersection:
-                classifiers.update({label: self.get_classifier_models()[label]})
+                classifiers.update({label: self._get_classifier_models()[label]})
         classifiers = dict(sorted(classifiers.items()))
 
         if estimator_params is not None:
@@ -294,14 +280,14 @@ class Classifiers(object):
                     "you must also include estimator in the list of `estimators`. "
                 )
 
-        print(
-            " -------------- Start to create performance metric by estimator. -------------- "
-        )
-        features, label = self.separate_by_feature_and_label(data=data, target=target)
+        X, y = self._transform_feature_scale(X=X, y=y)
         self.df_cv_result = pd.DataFrame()
+        self.label_count = np.unique(y).size
 
         for estimator_name, estimator in classifiers.items():
-            print(f" >>> {estimator_name} running... ")
+            print(
+                f" \n---------------------- {estimator_name} ---------------------- "
+            )
             fit_start_time = datetime.now()
 
             if estimator_params is not None:
@@ -319,17 +305,17 @@ class Classifiers(object):
                 estimator_params = None
                 fit_params = None
 
-            print(f"estimator_params: {estimator_params}")
-            print(f"fit_params: {fit_params}")
+            print(f" >>> estimator_params: {estimator_params}")
+            print(f" >>> fit_params: {fit_params}")
             if self.label_count >= 2:
                 cv_result_dict = cross_validate(
                     estimator=estimator()
                     if estimator_params is None
                     else estimator(**estimator_params),
                     fit_params=fit_params,
-                    X=features,
-                    y=label,
-                    cv=self.get_kfold_function(
+                    X=X,
+                    y=y,
+                    cv=self._get_kfold_function(
                         kfold=kfold, n_splits=n_splits, n_repeats=n_repeats
                     ),
                     scoring=scoring,
@@ -339,7 +325,6 @@ class Classifiers(object):
 
                 if isinstance(scoring, list):
                     value_vars = [f"test_{s}" for s in scoring]
-                    print(value_vars)
                     df_cv = df_cv.melt(
                         id_vars=["fit_time", "score_time"], value_vars=value_vars
                     )
@@ -359,12 +344,8 @@ class Classifiers(object):
             else:
                 raise ValueError(" Single class can not create confusion matrix. ")
             print(
-                f" Finished. (elapsed_time: {(datetime.now() - fit_start_time).seconds}s) "
+                f" >>> Finished. (elapsed_time: {(datetime.now() - fit_start_time).seconds}s) "
             )
-            print(
-                " ------------------------------------------------------------------------------ "
-            )
-        return self.df_cv_result
 
     def show_cross_validation_result(self):
         """
@@ -390,7 +371,7 @@ class Classifiers(object):
             ignore_index=True,
         )
 
-        sns.set(rc={"figure.figsize": (12, 6)})
+        sns.set(rc={"figure.figsize": (8, 12), "figure.dpi": 120})
         for scoring in df["scoring"].unique():
             fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(18, 6))
             fig.tight_layout()
@@ -424,7 +405,7 @@ class Classifiers(object):
                 ax.tick_params(axis="y", labelsize=14)
                 ax.set_xlabel(xlabel=None)
                 ax.set_ylabel(ylabel=None)
-            ax1.set_title(scoring.upper(), fontsize=14)
+            ax1.set_title(str(scoring).upper(), fontsize=14)
             ax2.set_title("fit time (sec)", fontsize=14)
 
             df_tmp = df.loc[
@@ -473,9 +454,10 @@ class Classifiers(object):
 
     def search_hyperparameter(
         self,
-        data: pd.DataFrame,
-        target: str,
+        X,
+        y,
         hyperparams_space: dict,
+        feature_names: list = None,
         search_method: str = "random",
         test_size: float = 0.25,
         shuffle: bool = True,
@@ -486,15 +468,16 @@ class Classifiers(object):
         n_iter: int = 10,
         factor: int = 3,
         filepath: str = "model_saved",
-    ) -> pd.DataFrame:
+        verbose: int = -1,
+    ):
         """
         하이퍼파라미터 탐색 결과를 반환한다.
 
-        :param data: pd.DataFrame
-            Dataset to fit and train model.
+        :param X: Features to fit and train model.
+        :param y: A target label to predict.
 
-        :param target: str
-            A target column of dataset to try to predict.
+        :param feature_names: list
+            Name of features.
 
         :param hyperparams_space: dictionary
             model and hyperparams to use
@@ -546,30 +529,31 @@ class Classifiers(object):
             The filepath to save the best estimator.
         """
 
-        self.feature_names = data.loc[:, data.columns != target].columns
+        self.feature_names = feature_names
         self.df_hyperparams_search_result = pd.DataFrame()
         self.best_estimators = dict()
         self.n_repeats = n_repeats
         self.n_splits = n_splits
         self.scoring = scoring
 
-        print(" -------------- Start to search best parameters. -------------- ")
         X_train, X_test, y_train, y_test = self.split_data_into_train_test(
-            data=data, target=target, test_size=test_size, shuffle=shuffle
+            X=X, y=y, test_size=test_size, shuffle=shuffle
         )
 
-        classifier_all = self.get_classifier_models().keys()
+        classifier_all = self._get_classifier_models().keys()
         params_grid = self.generate_params_grid(hyperparams_space=hyperparams_space)
         classifier_to_use = params_grid.keys()
 
         comm_classifiers = classifier_all & classifier_to_use
         classifiers = {}
         for label in comm_classifiers:
-            classifiers.update({label: self.get_classifier_models()[label]})
+            classifiers.update({label: self._get_classifier_models()[label]})
         classifiers = dict(sorted(classifiers.items()))
 
         for estimator_name, estimator in classifiers.items():
-            print(f" >>> {estimator_name} running... ")
+            print(
+                f" \n---------------------- {estimator_name} ---------------------- "
+            )
             fit_start_time = datetime.now()
 
             param_grid = params_grid[estimator_name]
@@ -579,40 +563,42 @@ class Classifiers(object):
             else:
                 fit_params = None
 
-            print("param_grid:")
+            print(" >>> Hyperparameter Space: ")
             pp.pprint(param_grid)
-            print(f"fit_params: {fit_params}")
+            print(f" >>> fit_params: {fit_params}")
 
             if search_method == "grid":
                 model = GridSearchCV(
                     estimator=estimator(),
                     param_grid=param_grid,
-                    cv=self.get_kfold_function(
+                    cv=self._get_kfold_function(
                         kfold=kfold, n_splits=n_splits, n_repeats=n_repeats
                     ),
                     scoring=scoring,
                     n_jobs=-1,
                     return_train_score=True,
+                    verbose=verbose,
                 )
 
             elif search_method == "random":
                 model = RandomizedSearchCV(
                     estimator=estimator(),
                     param_distributions=param_grid,
-                    cv=self.get_kfold_function(
+                    cv=self._get_kfold_function(
                         kfold=kfold, n_splits=n_splits, n_repeats=n_repeats
                     ),
                     scoring=scoring,
                     n_iter=n_iter,
                     n_jobs=-1,
                     return_train_score=True,
+                    verbose=verbose,
                 )
 
             elif search_method == "grid_halving":
                 model = HalvingGridSearchCV(
                     estimator=estimator(),
                     param_grid=param_grid,
-                    cv=self.get_kfold_function(
+                    cv=self._get_kfold_function(
                         kfold=kfold, n_splits=n_splits, n_repeats=n_repeats
                     ),
                     scoring=scoring,
@@ -620,13 +606,14 @@ class Classifiers(object):
                     return_train_score=True,
                     min_resources="exhaust",
                     factor=factor,
+                    verbose=verbose,
                 )
 
             elif search_method == "random_halving":
                 model = HalvingRandomSearchCV(
                     estimator=estimator(),
                     param_distributions=param_grid,
-                    cv=self.get_kfold_function(
+                    cv=self._get_kfold_function(
                         kfold=kfold, n_splits=n_splits, n_repeats=n_repeats
                     ),
                     scoring=scoring,
@@ -634,6 +621,7 @@ class Classifiers(object):
                     return_train_score=True,
                     n_candidates="exhaust",
                     factor=factor,
+                    verbose=verbose,
                 )
 
             else:
@@ -663,12 +651,10 @@ class Classifiers(object):
                         **fit_params,
                     )
 
-            print(f" Best Parameters: {model.best_params_} ")
+            print(" >>> Best Parameters:")
+            pp.pprint(model.best_params_)
             print(
-                f" Finished. (elapsed_time: {(datetime.now() - fit_start_time).seconds}s) "
-            )
-            print(
-                "------------------------------------------------------------------------------"
+                f" >>> Finished. (elapsed_time: {(datetime.now() - fit_start_time).seconds}s) "
             )
             self.best_estimators.update({estimator_name: model.best_estimator_})
             os.makedirs(filepath, exist_ok=True)
@@ -679,7 +665,6 @@ class Classifiers(object):
             self.df_hyperparams_search_result = pd.concat(
                 [self.df_hyperparams_search_result, cv_result_tmp], ignore_index=True
             )
-        return self.df_hyperparams_search_result
 
     def show_hyperparameter_search_result(self):
         """
@@ -715,7 +700,7 @@ class Classifiers(object):
                 ignore_index=True,
             )
 
-        sns.set(rc={"figure.figsize": (12, 6)})
+        sns.set(rc={"figure.figsize": (8, 12), "figure.dpi": 120})
         fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2, figsize=(18, 6))
         fig.tight_layout()
         fig.subplots_adjust(wspace=0.4)
@@ -742,7 +727,7 @@ class Classifiers(object):
             ax.tick_params(axis="y", labelsize=14)
             ax.set_xlabel(xlabel=None)
             ax.set_ylabel(ylabel=None)
-        ax1.set_title(self.scoring.upper(), fontsize=14)
+        ax1.set_title(str(self.scoring).upper(), fontsize=14)
         ax2.set_title("mean fit time (sec)", fontsize=14)
 
         for index, row in df.iterrows():
@@ -800,18 +785,14 @@ class Classifiers(object):
                 "roc_auc": roc_auc,
             }
 
-    def show_precision_recall_by_thresholds(
-        self, estimators: str, data: pd.DataFrame, target: str
-    ):
+    def show_precision_recall_by_thresholds(self, X, y, estimators: str):
         """
         threshold에 따른 이진 분류 성능(정밀도, 재현율)을 시각화한다.
         """
 
         from sklearn.metrics import precision_recall_curve
 
-        X_train, X_test, y_train, y_test = self.split_data_into_train_test(
-            data=data, target=target
-        )
+        X_train, X_test, y_train, y_test = self.split_data_into_train_test(X=X, y=y)
 
         if estimators is None:
             best_estimators_ = self.best_estimators
@@ -888,8 +869,6 @@ class Classifiers(object):
         """
 
         feature_importances = {}
-        sns.set(rc={"figure.figsize": (12, 6)})
-
         if estimators is None:
             for estimator_name, estimator in self.best_estimators.items():
                 try:  # tree 기반에 한해서만 feature_importances가 나옴
@@ -913,6 +892,7 @@ class Classifiers(object):
                 except:
                     continue
 
+        sns.set(rc={"figure.figsize": (8, 12), "figure.dpi": 120})
         if index is None:
             df_tmp = pd.DataFrame(
                 data=feature_importances, index=self.feature_names[:n_features]
@@ -939,11 +919,7 @@ class Classifiers(object):
                 plt.show()
 
     def show_permutation_importances(
-        self,
-        data: pd.DataFrame,
-        target: str,
-        estimators: list = None,
-        scoring: str = None,
+        self, X, y, estimators: list = None, scoring: str = None
     ):
         """
         훈련된 모델로 각 Feature 여부에 따른 중요도를 시각화한다.
@@ -975,9 +951,7 @@ class Classifiers(object):
 
             If None, the estimator's default scorer is used.
         """
-        X_train, X_test, y_train, y_test = self.split_data_into_train_test(
-            data=data, target=target
-        )
+        X_train, X_test, y_train, y_test = self.split_data_into_train_test(X=X, y=y)
 
         permutation_importances = {}
         if estimators is None:
@@ -1001,7 +975,7 @@ class Classifiers(object):
             )
             permutation_importances.update({estimator_name: scores})
 
-        sns.set(rc={"figure.figsize": (12, 12)})
+        sns.set(rc={"figure.figsize": (8, 12), "figure.dpi": 120})
         for estimator_name in permutation_importances.keys():
             if isinstance(scoring, list):
                 for score in scoring:
@@ -1017,7 +991,7 @@ class Classifiers(object):
                         meanprops={"marker": "v", "markerfacecolor": "white"},
                     )
                     plt.title(
-                        f"Permutation Importances ({estimator_name}, {score.upper()})",
+                        f"Permutation Importances ({estimator_name}, {str(score).upper()})",
                         fontsize=13,
                     )
                     plt.show()
@@ -1033,7 +1007,7 @@ class Classifiers(object):
                 )
                 if scoring is not None:
                     plt.title(
-                        f"Permutation Importances ({estimator_name}, {scoring.upper()})",
+                        f"Permutation Importances ({estimator_name}, {str(scoring).upper()})",
                         fontsize=13,
                     )
                 else:
