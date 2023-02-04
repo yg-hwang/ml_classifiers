@@ -285,9 +285,7 @@ class Classifiers(object):
         self.label_count = np.unique(y).size
 
         for estimator_name, estimator in classifiers.items():
-            print(
-                f" \n---------------------- {estimator_name} ---------------------- "
-            )
+            print(f" \n---------------------- {estimator_name} ---------------------- ")
             fit_start_time = datetime.now()
 
             if estimator_params is not None:
@@ -551,9 +549,7 @@ class Classifiers(object):
         classifiers = dict(sorted(classifiers.items()))
 
         for estimator_name, estimator in classifiers.items():
-            print(
-                f" \n---------------------- {estimator_name} ---------------------- "
-            )
+            print(f" \n---------------------- {estimator_name} ---------------------- ")
             fit_start_time = datetime.now()
 
             param_grid = params_grid[estimator_name]
